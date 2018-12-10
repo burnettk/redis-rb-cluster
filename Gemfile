@@ -1,3 +1,3 @@
-source 'https://nexus.trstone.com/repository/rubygems-all'
+source 'http://rubygems.org'
 
 gem 'redis'

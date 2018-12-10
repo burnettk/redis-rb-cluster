@@ -1,5 +1,5 @@
 GEM
-  remote: https://nexus.trstone.com/repository/rubygems-all/
+  remote: http://rubygems.org/
   specs:
     redis (4.0.3)
 
