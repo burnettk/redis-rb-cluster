@@ -7,10 +7,10 @@
 # distribute, sublicense, and/or sell copies of the Software, and to
 # permit persons to whom the Software is furnished to do so, subject to
 # the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be
 # included in all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 # EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 # MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -38,9 +38,21 @@ class RedisCluster
         initialize_slots_cache
     end
 
+    # invocation in k8s with redis/stable-ha chart could look something like this:
+    # ruby consistency-test.rb eyewitness-goat-redis-ha-sentinel 26379
     def get_redis_link(host,port)
         timeout = @opt[:timeout] or RedisClusterDefaultTimeout
-        Redis.new(:host => host, :port => port, :timeout => timeout)
+        # Redis.new(:host => host, :port => port, :timeout => timeout)
+
+        # not sure what the right solution is here, but in k8s,
+        # i don't know about multiple sentinels, just the sentinel
+        # service, so i'm specifying the same thing here twice. :/
+        sentinels = [
+          { host: host, port: port },
+          { host: host, port: port }
+        ]
+
+        Redis.new(url: "redis://mymaster", sentinels: sentinels)
     end
 
     # Given a node (that is just a Ruby hash) give it a name just
