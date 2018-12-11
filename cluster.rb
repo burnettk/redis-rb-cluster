@@ -38,11 +38,14 @@ class RedisCluster
         initialize_slots_cache
     end
 
+    # invocation with non-clustered could look something like this:
+    # ruby consistency-test.rb hot-redis-redis-ha 6379
+    #
     # invocation in k8s with redis/stable-ha 2.x chart could look something like this:
     # USE_SENTINEL=true ruby consistency-test.rb eyewitness-goat-redis-ha-sentinel 26379
     #
     # invocation in k8s with redis/stable-ha 3.x chart could look something like this:
-    # ruby consistency-test.rb hot-redis-redis-ha 6379
+    # USE_SENTINEL=true ruby consistency-test.rb hot-redis-redis-ha 26379
     def get_redis_link(host,port)
         timeout = @opt[:timeout] or RedisClusterDefaultTimeout
         if ENV['USE_SENTINEL'] == 'true'
