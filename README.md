@@ -1,3 +1,17 @@
+# Notes about burnettk fork of redis-rb-cluster
+
+To run acceptance tests for kubernetes helm chart, stable/redis-ha, do this:
+
+    git clone https://github.com/burnettk/redis-rb-cluster.git
+    cd redis-rb-cluster
+    
+    # the second parameter is the kubernetes namespace on your cluster you want to use for this test:
+    ./test_redis_ha my-k8s-test-namespace
+    
+    # if you have a local modification to the stable/redis-ha chart, use it like this:
+    REDIS_HA_HELM_CHART_DIR="$HOME/projects/github/charts/stable/redis-ha" ./test_redis_ha my-k8s-test-namespace
+
+
 # Redis-rb-cluster
 
 Redis Cluster client work in progress.
