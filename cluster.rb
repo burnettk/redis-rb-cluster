@@ -48,7 +48,7 @@ class RedisCluster
     # USE_SENTINEL=true ruby consistency-test.rb hot-redis-redis-ha 26379
     def get_redis_link(host,port)
         timeout = @opt[:timeout] or RedisClusterDefaultTimeout
-        if ENV['USE_SENTINEL'] == 'true'
+        if ENV['USE_SENTINEL'] != 'false'
           # not sure what the right solution is here, but in k8s,
           # i don't know about multiple sentinels, just the sentinel
           # service, so i'm specifying the same thing here twice. :/
