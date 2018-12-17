@@ -1,0 +1,97 @@
+#!/bin/bash
+
+set -e
+
+if [ -z "$1" ]; then
+  echo "ERROR: please supply a kubernetes namespace as the first argument to this script (like ./test_redis_ha default)"
+  exit 1
+fi
+
+export REDIS_HA_KUBERNETES_NAMESPACE="$1"
+
+if [ ! -d $REDIS_HA_HELM_CHART_DIR ]; then
+  echo "WARNING: no REDIS_HA_HELM_CHART_DIR specified. using stable/redis-ha chart from google chart repo."
+  helm repo update
+fi
+
+if kubectl get deployment/redis-acceptance-test --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"; then
+  echo "cleaning up existing redis-acceptance-test deployment"
+  kubectl delete deployment/redis-acceptance-test --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
+fi
+
+helm_release_name="hot-redis-${REDIS_HA_KUBERNETES_NAMESPACE}"
+
+if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
+  if [ -n "$(helm list --namespace $REDIS_HA_KUBERNETES_NAMESPACE $helm_release_name)" ]; then
+    echo "cleaning up existing helm release ($helm_release_name) before starting new test"
+    helm delete --purge "$helm_release_name"
+  fi
+fi
+
+function wait_for_rollout_to_complete() {
+  wait_for_rollout_to_complete_timeout=360
+  if [ -z "$wait_for_rollout_to_complete_attempt_number" ]; then
+    wait_for_rollout_to_complete_attempt_number=1
+  fi
+  echo "wait_for_rollout_to_complete ($ROLLOUT_IDENTIFIER): attempt $wait_for_rollout_to_complete_attempt_number of $wait_for_rollout_to_complete_timeout"
+  if [ "$wait_for_rollout_to_complete_attempt_number" -lt "$wait_for_rollout_to_complete_timeout" ]; then
+    status_result="$(kubectl rollout status "statefulset.apps/${helm_release_name}-redis-ha-server" --watch=false)"
+    if grep -iq waiting <<< "$status_result"; then
+      wait_for_rollout_to_complete_attempt_number=$((wait_for_rollout_to_complete_attempt_number+1))
+      sleep 1
+      wait_for_rollout_to_complete
+    fi
+  else
+    echo "ERROR: $ROLLOUT_IDENTIFIER rollout did not complete within $wait_for_rollout_to_complete_timeout retry timeout"
+    return 1
+  fi
+}
+
+function perform_redis_rollout() {
+  echo "doing release: $helm_release_name"
+  chart_location=/tmp/redis-ha-3.0.3.tgz
+  if [ ! -d "$REDIS_HA_HELM_CHART_DIR" ]; then
+    chart_location=stable/redis-ha
+  fi
+  helm upgrade \
+    --install \
+    --set image.repository=redis \
+    --set image.tag=4.0.11-stretch \
+    --set persistentVolume.enabled=false \
+    --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" \
+    --set "podAnnotations.uniqueDeploymentIdentifier=$(uuidgen)" \
+    "$helm_release_name" \
+    "$chart_location"
+}
+
+function do_logger() {
+  if [ -z "$1" ]; then
+    echo "ERROR: please supply a log message to do_logger"
+    return 1
+  fi
+  log_message="$1"
+  echo "$log_message"
+  echo "$(date) ${log_message}" >> /tmp/test_redis_ha.log
+}
+
+if [ -d "$REDIS_HA_HELM_CHART_DIR" ]; then
+  helm package --destination /tmp "$REDIS_HA_HELM_CHART_DIR"
+fi
+
+ROLLOUT_IDENTIFIER="initial"
+perform_redis_rollout
+wait_for_rollout_to_complete
+
+# FIXME
+kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.2 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
+
+echo 'sleep 20'
+sleep 20
+
+test_log_line_before="$(kubectl logs --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" deployment/redis-acceptance-test --tail=50 | grep 'err)' | tail -n 1)"
+do_logger "BEFORE rollout: $test_log_line_before"
+ROLLOUT_IDENTIFIER="update"
+perform_redis_rollout
+wait_for_rollout_to_complete
+test_log_line_after="$(kubectl logs --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" deployment/redis-acceptance-test --tail=50 | grep 'err)' | tail -n 1)"
+do_logger "AFTER rollout: $test_log_line_after"
