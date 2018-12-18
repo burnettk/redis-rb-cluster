@@ -82,7 +82,6 @@ ROLLOUT_IDENTIFIER="initial"
 perform_redis_rollout
 wait_for_rollout_to_complete
 
-# FIXME
 kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.2 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
 
 echo 'sleep 20'
