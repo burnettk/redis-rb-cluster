@@ -11,6 +11,10 @@ To run acceptance tests for kubernetes helm chart, stable/redis-ha, do this:
     # if you have a local modification to the stable/redis-ha chart, use it like this:
     REDIS_HA_HELM_CHART_DIR="$HOME/projects/github/charts/stable/redis-ha" ./test_redis_ha my-k8s-test-namespace
 
+To monitor the status of the cluster while acceptance tests are running:
+
+    ./redis_cluster_status my-k8s-test-namespace
+
 
 # Redis-rb-cluster
 

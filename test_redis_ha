@@ -87,7 +87,7 @@ if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
 fi
 
 if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
-  kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.4 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
+  kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.5 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
 
   echo 'sleep 20'
   sleep 20
