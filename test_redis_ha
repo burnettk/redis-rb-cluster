@@ -78,11 +78,13 @@ if [ -d "$REDIS_HA_HELM_CHART_DIR" ]; then
   helm package --destination /tmp "$REDIS_HA_HELM_CHART_DIR"
 fi
 
-ROLLOUT_IDENTIFIER="initial"
-perform_redis_rollout
-wait_for_rollout_to_complete
+if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
+  ROLLOUT_IDENTIFIER="initial"
+  perform_redis_rollout
+  wait_for_rollout_to_complete
+fi
 
-kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.2 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
+kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.3 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
 
 echo 'sleep 20'
 sleep 20

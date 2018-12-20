@@ -39,7 +39,10 @@ class ConsistencyTester
         @reads = 0
         @failed_writes = 0
         @failed_reads = 0
+        @last_failed_writes = 0
+        @last_failed_reads = 0
         @lost_writes = 0
+        @bad_state_started_at = nil
         @not_ack_writes = 0
         @delay = 0
         @cached = {} # We take our view of data stored in the DB.
@@ -96,10 +99,23 @@ class ConsistencyTester
             # Report
             sleep @delay
             if Time.now.to_i != last_report
+                bad_state_time_period = nil
+                if @last_failed_reads != @failed_reads || @last_failed_writes != @failed_writes
+                  if @bad_state_started_at.nil?
+                    @bad_state_started_at = Time.now.to_i
+                  end
+                elsif @bad_state_started_at
+                    bad_state_time_period = Time.now.to_i - @bad_state_started_at
+                    @bad_state_started_at = nil
+                end
+                @last_failed_reads = @failed_reads
+                @last_failed_writes = @failed_writes
+
                 report = "#{@reads} R (#{@failed_reads} err) | " +
                          "#{@writes} W (#{@failed_writes} err) | "
                 report += "#{@lost_writes} lost | " if @lost_writes > 0
                 report += "#{@not_ack_writes} noack | " if @not_ack_writes > 0
+                report += "bad_state_duration #{bad_state_time_period}s | " if bad_state_time_period
                 last_report = Time.now.to_i
                 puts report
             end
