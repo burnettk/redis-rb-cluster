@@ -43,6 +43,7 @@ class ConsistencyTester
         @last_failed_reads = 0
         @lost_writes = 0
         @bad_state_started_at = nil
+        @bad_state_durations = []
         @not_ack_writes = 0
         @delay = 0
         @cached = {} # We take our view of data stored in the DB.
@@ -85,6 +86,9 @@ class ConsistencyTester
             rescue => e
                 puterr "Reading: #{e.to_s}"
                 @failed_reads += 1
+                if @bad_state_started_at.nil?
+                  @bad_state_started_at = Time.now.to_i
+                end
             end
 
             # Write
@@ -94,19 +98,18 @@ class ConsistencyTester
             rescue => e
                 puterr "Writing: #{e.to_s}"
                 @failed_writes += 1
+                if @bad_state_started_at.nil?
+                  @bad_state_started_at = Time.now.to_i
+                end
             end
 
             # Report
             sleep @delay
             if Time.now.to_i != last_report
                 bad_state_time_period = nil
-                if @last_failed_reads != @failed_reads || @last_failed_writes != @failed_writes
-                  if @bad_state_started_at.nil?
-                    @bad_state_started_at = Time.now.to_i
-                  end
-                elsif @bad_state_started_at
-                    bad_state_time_period = Time.now.to_i - @bad_state_started_at
-                    @bad_state_started_at = nil
+                if @bad_state_started_at && @last_failed_reads == @failed_reads && @last_failed_writes == @failed_writes
+                  @bad_state_durations.push(Time.now.to_i - @bad_state_started_at)
+                  @bad_state_started_at = nil
                 end
                 @last_failed_reads = @failed_reads
                 @last_failed_writes = @failed_writes
@@ -115,7 +118,14 @@ class ConsistencyTester
                          "#{@writes} W (#{@failed_writes} err) | "
                 report += "#{@lost_writes} lost | " if @lost_writes > 0
                 report += "#{@not_ack_writes} noack | " if @not_ack_writes > 0
-                report += "bad_state_duration #{bad_state_time_period}s | " if bad_state_time_period
+                if @bad_state_durations.any?
+                  last_outage = @bad_state_durations.last
+                  longest_outage = @bad_state_durations.sort.last
+                  report += "last outage #{last_outage}s | "
+                  if last_outage != longest_outage
+                    report += "longest outage #{longest_outage}s | "
+                  end
+                end
                 last_report = Time.now.to_i
                 puts report
             end

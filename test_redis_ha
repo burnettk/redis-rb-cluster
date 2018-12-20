@@ -14,9 +14,11 @@ if [ ! -d $REDIS_HA_HELM_CHART_DIR ]; then
   helm repo update
 fi
 
-if kubectl get deployment/redis-acceptance-test --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"; then
-  echo "cleaning up existing redis-acceptance-test deployment"
-  kubectl delete deployment/redis-acceptance-test --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
+if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
+  if kubectl get deployment/redis-acceptance-test --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"; then
+    echo "cleaning up existing redis-acceptance-test deployment"
+    kubectl delete deployment/redis-acceptance-test --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
+  fi
 fi
 
 helm_release_name="hot-redis-${REDIS_HA_KUBERNETES_NAMESPACE}"
@@ -84,15 +86,23 @@ if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
   wait_for_rollout_to_complete
 fi
 
-kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.3 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
+if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
+  kubectl run redis-acceptance-test --image burnettk/redis-acceptance-test:0.0.4 --env="REDIS_RB_HOST=${helm_release_name}-redis-ha" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE"
 
-echo 'sleep 20'
-sleep 20
+  echo 'sleep 20'
+  sleep 20
+fi
 
-test_log_line_before="$(kubectl logs --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" deployment/redis-acceptance-test --tail=50 | grep 'err)' | tail -n 1)"
-do_logger "BEFORE rollout: $test_log_line_before"
+if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
+  test_log_line_before="$(kubectl logs --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" deployment/redis-acceptance-test --tail=50 | grep 'err)' | tail -n 1)"
+  do_logger "BEFORE rollout: $test_log_line_before"
+fi
+
 ROLLOUT_IDENTIFIER="update"
 perform_redis_rollout
 wait_for_rollout_to_complete
-test_log_line_after="$(kubectl logs --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" deployment/redis-acceptance-test --tail=50 | grep 'err)' | tail -n 1)"
-do_logger "AFTER rollout: $test_log_line_after"
+
+if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
+  test_log_line_after="$(kubectl logs --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" deployment/redis-acceptance-test --tail=50 | grep 'err)' | tail -n 1)"
+  do_logger "AFTER rollout: $test_log_line_after"
+fi
