@@ -27,19 +27,29 @@ while :; do
   results_to_print=""
   results=$(kubectl get pod -l "app=${chart_name},release=${helm_release_name}" -o wide --no-headers | awk '{print $1,"\011",$2,"\011",$3,"\011",$5,"\011",$6}')
   pod_to_exec=$(grep '2/2' <<<"$results" | head -n 1 | awk '{print $1}')
-  master_ip=$(kubectl exec --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -c redis "$pod_to_exec" -- redis-cli -h "$helm_full_service_name" -p "$REDIS_HA_SENTINEL_PORT" sentinel get-master-addr-by-name mymaster | grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+  services=$(kubectl get service --no-headers -l "app=${chart_name},release=${helm_release_name}" -o wide | grep announce)
   results_to_print="$results"
 
+  if [[ -n "$pod_to_exec" ]]; then
+    master_ip=$(kubectl exec --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -c redis "$pod_to_exec" -- redis-cli -h "$helm_full_service_name" -p "$REDIS_HA_SENTINEL_PORT" sentinel get-master-addr-by-name mymaster | grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}')
+  else
+    master_ip="NO MASTER FOUND"
+  fi
+
   while read -r pod; do
-    sentinel_results=$(kubectl exec --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -c redis "$pod" -- timeout 5 redis-cli -h localhost -p "$REDIS_HA_SENTINEL_PORT" sentinel sentinels mymaster  | grep -E '\<ip\>' -A1 | grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sort | sed ':a;N;$!ba;s/\n/ /g')
-    slave_results=$(kubectl exec --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -c redis "$pod" -- timeout 5 redis-cli -h localhost -p "$REDIS_HA_SENTINEL_PORT" sentinel slaves mymaster  | grep -E '\<ip\>' -A1 | grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sort | sed ':a;N;$!ba;s/\n/ /g')
-    results_to_print="$(echo "$results_to_print" | sed -E "s/($pod.*)/\1    (SENTINELS $sentinel_results)/")"
-    results_to_print="$(echo "$results_to_print" | sed -E "s/($pod.*)/\1    (SLAVES $slave_results)/")"
+    if [ -n "$pod" ]; then
+      service_ip=$(grep "$(sed 's/-server-/-announce-/' <<<"$pod")" <<<"$services" | awk '{print $3}')
+      sentinel_results=$(kubectl exec --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -c redis "$pod" -- timeout 5 redis-cli -h localhost -p "$REDIS_HA_SENTINEL_PORT" sentinel sentinels mymaster  | grep -E '\<ip\>' -A1 | grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sort | sed ':a;N;$!ba;s/\n/, /g')
+      slave_results=$(kubectl exec --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -c redis "$pod" -- timeout 5 redis-cli -h localhost -p "$REDIS_HA_SENTINEL_PORT" sentinel slaves mymaster  | grep -E '\<ip\>' -A1 | grep -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sort | sed ':a;N;$!ba;s/\n/, /g')
+      results_to_print="$(echo "$results_to_print" | sed -E "s/($pod.*)/\1    (SERVICE IP $service_ip)/")"
+      results_to_print="$(echo "$results_to_print" | sed -E "s/($pod.*)/\1    (SENTINELS $sentinel_results)/")"
+      results_to_print="$(echo "$results_to_print" | sed -E "s/($pod.*)/\1    (SLAVES $slave_results)/")"
+    fi
   done <<<"$(grep '2/2' <<<"$results" | awk '{print $1}')"
 
   if [ "$results_to_print" != "$previous_results" ]; then
     if ! grep -q "$master_ip" <<<"$results_to_print"; then
-      echo "CLUSTER EXPECTED MASTER THAT DOES NOT EXIST: $master_ip"
+      echo "CLUSTER EXPECTED MASTER THAT DOES NOT EXIST: $master_ip from '${pod_to_exec}'"
       echo -e "$results_to_print" | sed -e "s/${helm_full_service_name}-server-//g"
     else
       echo -e "$results_to_print" | sed -e "s/${helm_full_service_name}-server-//g" | grep "$master_ip" --color -5

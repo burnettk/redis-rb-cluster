@@ -9,9 +9,14 @@ fi
 
 export REDIS_HA_KUBERNETES_NAMESPACE="$1"
 
-if [ ! -d $REDIS_HA_HELM_CHART_DIR ]; then
-  echo "WARNING: no REDIS_HA_HELM_CHART_DIR specified. using stable/redis-ha chart from google chart repo."
+if [ -z "$REDIS_HA_HELM_CHART_DIR" ]; then
   helm repo update
+elif [[ -n "$REDIS_HA_HELM_CHART_DIR" && ! -d $REDIS_HA_HELM_CHART_DIR ]]; then
+  echo "FATAL: no REDIS_HA_HELM_CHART_DIR specified."
+  exit 1
+else
+  tmp_redis_package_dir="/tmp/redis_ha_helm_chart_$(date +%s)"
+  mkdir "$tmp_redis_package_dir"
 fi
 
 if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
@@ -51,7 +56,7 @@ function wait_for_rollout_to_complete() {
 
 function perform_redis_rollout() {
   echo "doing release: $helm_release_name"
-  chart_location=/tmp/redis-ha-3.0.3.tgz
+  chart_location=$(find "$tmp_redis_package_dir" -name "*.tgz" | head -n1)
   if [ ! -d "$REDIS_HA_HELM_CHART_DIR" ]; then
     chart_location=stable/redis-ha
   fi
@@ -77,7 +82,7 @@ function do_logger() {
 }
 
 if [ -d "$REDIS_HA_HELM_CHART_DIR" ]; then
-  helm package --destination /tmp "$REDIS_HA_HELM_CHART_DIR"
+  helm package --destination "$tmp_redis_package_dir" "$REDIS_HA_HELM_CHART_DIR"
 fi
 
 if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
