@@ -15,9 +15,12 @@ if [[ -z "$REDIS_HA_SENTINEL_PORT" ]]; then
   REDIS_HA_SENTINEL_PORT=26379
 fi
 
+if [[ -z "$CHART_NAME" ]]; then
+  CHART_NAME="redis-ha"
+fi
+
 helm_release_name="${HELM_RELEASE}-${REDIS_HA_KUBERNETES_NAMESPACE}"
-chart_name="redis-ha"
-helm_full_service_name="${helm_release_name}-${chart_name}"
+helm_full_service_name="${helm_release_name}-${CHART_NAME}"
 
 previous_results=""
 
@@ -25,9 +28,9 @@ grep --color colorized <<<"Redis cluster status. The pod that the cluster thinks
 
 while :; do
   results_to_print=""
-  results=$(kubectl get pod -l "app=${chart_name},release=${helm_release_name}" -o wide --no-headers | awk '{print $1,"\011",$2,"\011",$3,"\011",$5,"\011",$6}')
+  results=$(kubectl get pod -l "app=${CHART_NAME},release=${helm_release_name}" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -o wide --no-headers | awk '{print $1,"\011",$2,"\011",$3,"\011",$5,"\011",$6}')
   pod_to_exec=$(grep '2/2' <<<"$results" | head -n 1 | awk '{print $1}')
-  services=$(kubectl get service --no-headers -l "app=${chart_name},release=${helm_release_name}" -o wide | grep announce)
+  services=$(kubectl get service --no-headers -l "app=${CHART_NAME},release=${helm_release_name}" --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" -o wide | grep announce)
   results_to_print="$results"
 
   if [[ -n "$pod_to_exec" ]]; then

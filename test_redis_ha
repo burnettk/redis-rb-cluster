@@ -9,14 +9,20 @@ fi
 
 export REDIS_HA_KUBERNETES_NAMESPACE="$1"
 
-if [ -z "$REDIS_HA_HELM_CHART_DIR" ]; then
-  helm repo update
-elif [[ -n "$REDIS_HA_HELM_CHART_DIR" && ! -d $REDIS_HA_HELM_CHART_DIR ]]; then
-  echo "FATAL: no REDIS_HA_HELM_CHART_DIR specified."
-  exit 1
-else
-  tmp_redis_package_dir="/tmp/redis_ha_helm_chart_$(date +%s)"
-  mkdir "$tmp_redis_package_dir"
+if [[ -z "$HELM_RELEASE_FOR_ACCEPTANCE_TESTS" ]]; then
+  HELM_RELEASE_FOR_ACCEPTANCE_TESTS=hot-redis
+fi
+
+if [ "$RUN_ACCEPTANCE_TESTS_ONLY" != "true" ]; then
+  if [ -z "$REDIS_HA_HELM_CHART_DIR" ]; then
+    helm repo update
+  elif [[ -n "$REDIS_HA_HELM_CHART_DIR" && ! -d $REDIS_HA_HELM_CHART_DIR ]]; then
+    echo "FATAL: no REDIS_HA_HELM_CHART_DIR specified."
+    exit 1
+  else
+    tmp_redis_package_dir="/tmp/redis_ha_helm_chart_$(date +%s)"
+    mkdir "$tmp_redis_package_dir"
+  fi
 fi
 
 if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
@@ -26,12 +32,14 @@ if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
   fi
 fi
 
-helm_release_name="hot-redis-${REDIS_HA_KUBERNETES_NAMESPACE}"
+helm_release_name="${HELM_RELEASE_FOR_ACCEPTANCE_TESTS}-${REDIS_HA_KUBERNETES_NAMESPACE}"
 
-if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
-  if [ -n "$(helm list --namespace $REDIS_HA_KUBERNETES_NAMESPACE $helm_release_name)" ]; then
-    echo "cleaning up existing helm release ($helm_release_name) before starting new test"
-    helm delete --purge "$helm_release_name"
+if [ "$RUN_ACCEPTANCE_TESTS_ONLY" != "true" ]; then
+  if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
+    if [ -n "$(helm list --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" "$helm_release_name")" ]; then
+      echo "cleaning up existing helm release ($helm_release_name) before starting new test"
+      helm delete --purge "$helm_release_name"
+    fi
   fi
 fi
 
@@ -81,14 +89,16 @@ function do_logger() {
   echo "$(date) ${log_message}" >> /tmp/test_redis_ha.log
 }
 
-if [ -d "$REDIS_HA_HELM_CHART_DIR" ]; then
-  helm package --destination "$tmp_redis_package_dir" "$REDIS_HA_HELM_CHART_DIR"
-fi
+if [ "$RUN_ACCEPTANCE_TESTS_ONLY" != "true" ]; then
+  if [ -d "$REDIS_HA_HELM_CHART_DIR" ]; then
+    helm package --destination "$tmp_redis_package_dir" "$REDIS_HA_HELM_CHART_DIR"
+  fi
 
-if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
-  ROLLOUT_IDENTIFIER="initial"
-  perform_redis_rollout
-  wait_for_rollout_to_complete
+  if [ "$KEEP_REDIS_RUNNING" != "true" ]; then
+    ROLLOUT_IDENTIFIER="initial"
+    perform_redis_rollout
+    wait_for_rollout_to_complete
+  fi
 fi
 
 if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
@@ -104,8 +114,11 @@ if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
 fi
 
 ROLLOUT_IDENTIFIER="update"
-perform_redis_rollout
-wait_for_rollout_to_complete
+
+if [ "$RUN_ACCEPTANCE_TESTS_ONLY" != "true" ]; then
+  perform_redis_rollout
+  wait_for_rollout_to_complete
+fi
 
 if [ "$RUN_ACCEPTANCE_TESTS" != "false" ]; then
   test_log_line_after="$(kubectl logs --namespace "$REDIS_HA_KUBERNETES_NAMESPACE" deployment/redis-acceptance-test --tail=50 | grep 'err)' | tail -n 1)"
